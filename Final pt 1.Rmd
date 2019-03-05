@@ -9,11 +9,9 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 
 ```{r}
 #Load Data
-
-#Test where the NAs are
-which(is.na(loans50k), arr.ind=TRUE)
-
-#Found a bunch in "employment". Inspect further and possibly eliminate/transform. 
+library(readr)
+loans50k <- read_csv("loans50k.csv")
+View(loans50k)
 ```
 ```{r}
 library(tidyr)
@@ -30,30 +28,29 @@ df <-
 #change the empty string cells to NAs
 df[df==""]<-NA
 
-#To change NA in "employment"" column, set as either Yes or "unknown"
-df <-
-  df %>%
-  mutate(Employed = ifelse(!is.na(employment), "Yes", "Unknown"))
-#Remove Original employment Column
+#Test where all NAs are to 
+which(is.na(df), arr.ind=TRUE)
+#Found a bunch in "employment". Going to eliminate on account of too many levels/NA values.  
 df$employment<- NULL
-df$Employed<-NULL
 
 ```
 
 ```{r}
+#Probably best to get rid of the null values we aren't interested in payment_status:
+df<-df %>% drop_na(payment_status)
+
 #Test where the NAs are again:
 which(is.na(df), arr.ind=TRUE)
 
 #Row 34806 is missing all values, eliminate and test again:
 df <- df[-c(34806),] 
 which(is.na(df), arr.ind=TRUE)
-#last ones besides payment_status are bcOpen and bcRatio, of which there are roughtly 500 missing entries, or 1% of the 
-#original dataset. Eliminating these wont be an issue
-sum(is.na(df$bcOpen))
+#last NA values are in bcOpen and bcRatio, of which there are roughtly 400 incomplete entries, 
+#or roughly 1% of the dataset. Eliminating these wont be a huge issue. 
 
-#Finally omit all the rows containing NA values. This slims down the dataset, but mostly due to removing Loans that are late,
-#current (being paid), or in grace period.
+#Finally omit all the rows containing NA values. (This will not eliminate the NA values in "length" as they are strings)
 df1<-na.omit(df)
+
 
 #consolidate "verified" variable into two levels instead of three
 library(plyr)
@@ -66,17 +63,34 @@ unique(df1$verified)
 #make subset of numerical data check covariance matrix on numeric factors. 
 dfNum<-select_if(df1, is.numeric)
 cor(dfNum)
+#Found few redundant variables...will eliminate: 
 
+#Final check for number of levels in each categorical variable
+dfChar<-select_if(df1,is.character) 
+sapply((sapply(dfChar,unique)),length)
+
+
+#Eliminating: totalPaid, employment (already done), payment,revolRatio, avgBal, totalLim,state,status,loanID
 df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID)))
 
 ```
-#Employment: Wayyy to many levels
-#state: irrelevant information
-#totalPaid: because it was required
-#TotalBal;TotalLim: They are both heavy associated with avebal
-#payment: redundant of Amount
+
+
+```{r}
+
+library("ggplot2")
+sapply(df_New, hist)
+```
+
+```{r}
+
+```
+
 ```
 ```{r}
+#Eventually...
+mylogit <- glm(as.factor(payment_status) ~ ., data = df_New, family = "binomial")
+
 
 ```
 
