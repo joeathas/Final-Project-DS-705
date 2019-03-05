@@ -1,0 +1,48 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+#Test where the NAs are
+which(is.na(loans50k), arr.ind=TRUE)
+
+#Found a bunch in "employment". Inspect further and possibly eliminate/transform. 
+```
+```{r}
+library(tidyr)
+library(dplyr)
+#Make new variable: Set "Good" and "Bad" Loans, all else "blank" to be removed later
+df <-
+  loans50k %>%
+  mutate(payment_status = case_when(
+    status == "Fully Paid" ~ "Good", 
+    status == "Charged Off" ~ "Bad",
+    TRUE ~ ""
+  ))
+
+#change the empty string cells to NAs
+df[df==""]<-NA
+
+#To change NA in "employment"" column, set as either Yes or "unknown"
+df <-
+  df %>%
+  mutate(Employed = ifelse(!is.na(employment), "Yes", "Unknown"))
+#Remove Original employment Column
+df$employment<- NULL
+
+
+```
+
+```{r}
+#Test where the NAs are again:
+which(is.na(df), arr.ind=TRUE)
+
+#Row 34806 is missing all values, eliminate and test again:
+test <- df[-c(34806),] 
+```
+
