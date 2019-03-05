@@ -8,6 +8,8 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
 
 ```{r}
+#Load Data
+
 #Test where the NAs are
 which(is.na(loans50k), arr.ind=TRUE)
 
@@ -34,7 +36,7 @@ df <-
   mutate(Employed = ifelse(!is.na(employment), "Yes", "Unknown"))
 #Remove Original employment Column
 df$employment<- NULL
-
+df$Employed<-NULL
 
 ```
 
@@ -43,6 +45,43 @@ df$employment<- NULL
 which(is.na(df), arr.ind=TRUE)
 
 #Row 34806 is missing all values, eliminate and test again:
-test <- df[-c(34806),] 
+df <- df[-c(34806),] 
+which(is.na(df), arr.ind=TRUE)
+#last ones besides payment_status are bcOpen and bcRatio, of which there are roughtly 500 missing entries, or 1% of the 
+#original dataset. Eliminating these wont be an issue
+sum(is.na(df$bcOpen))
+
+#Finally omit all the rows containing NA values. This slims down the dataset, but mostly due to removing Loans that are late,
+#current (being paid), or in grace period.
+df1<-na.omit(df)
+
+#consolidate "verified" variable into two levels instead of three
+library(plyr)
+df1$verified<-revalue(df1$verified, c("Source Verified"="Verified"))
+unique(df1$verified)
+
 ```
+
+```{r}
+#make subset of numerical data check covariance matrix on numeric factors. 
+dfNum<-select_if(df1, is.numeric)
+cor(dfNum)
+
+df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID)))
+
+```
+#Employment: Wayyy to many levels
+#state: irrelevant information
+#totalPaid: because it was required
+#TotalBal;TotalLim: They are both heavy associated with avebal
+#payment: redundant of Amount
+```
+```{r}
+
+```
+
+```{r}
+
+```
+
 
