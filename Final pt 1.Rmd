@@ -21,30 +21,25 @@ df <-
   mutate(payment_status = case_when(
     status == "Fully Paid" ~ "Good", 
     status == "Charged Off" ~ "Bad",
+     status == "Default" ~ "Bad",
     TRUE ~ ""
   ))
-
-#check total
+#Probably best to get rid of the null values we aren't interested in payment_status:
+df<-df %>% drop_na(payment_status)
 
 #change the empty string cells to NAs
 df[df==""]<-NA
 
 #Test where all NAs are to 
-which(is.na(df), arr.ind=TRUE)
+#which(is.na(df), arr.ind=TRUE)
 #Found a bunch in "employment". Going to eliminate on account of too many levels/NA values.  
 df$employment<- NULL
 
 ```
 
 ```{r}
-#Probably best to get rid of the null values we aren't interested in payment_status:
-df<-df %>% drop_na(payment_status)
 
 #Test where the NAs are again:
-which(is.na(df), arr.ind=TRUE)
-
-#Row 34806 is missing all values, eliminate and test again:
-df <- df[-c(34806),] 
 which(is.na(df), arr.ind=TRUE)
 #last NA values are in bcOpen and bcRatio, of which there are roughtly 400 incomplete entries, 
 #or roughly 1% of the dataset. Eliminating these wont be a huge issue. 
@@ -66,11 +61,12 @@ dfNum<-select_if(df1, is.numeric)
 m<-cor(dfNum)
 #easy way to find strong correlations; arbitrary value set at .8
 strongCorrelations = m > .8
-dfNum$totalIlLim
 
 
-#Found few redundant variables...will eliminate: 
+#Found few redundant variables...will eliminate
+```
 
+```{r}
 #Final check for number of levels in each categorical variable
 dfChar<-select_if(df1,is.character) 
 sapply((sapply(dfChar,unique)),length)
@@ -79,24 +75,25 @@ cor(df$avgBal,df$totalLim)
 #Eliminating: totalPaid, employment (already done), payment,revolRatio, avgBal, totalLim,state,status,loanID
 df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID,totalIlLim,totalBcLim)))
 
-#Test for instances of each level
-x=sapply(dfCont,count)
+
 
 #going to combine a few levels in "reason" due to the lack of instances
 df_New$reason<-revalue(df_New$reason,c("wedding"="other","renewable_energy"="other","house"="major_purchase"))
-#Test for instances of each level again
-x=sapply(df_New,count)
 
+#make df of only continuous variables
+dfCont<-select_if(df_New, is.character)
+#Test for instances of each level
+x=sapply(dfCont,count)
+x
 #lowest #of instances is now above 200
 ```
-
 
 ```{r}
 #make new df of only numeric variables.
 dfNum<-select_if(df_New, is.numeric)
-dfCont<-select_if(df_New, is.character)
-library("moments")
-library("ggplot2")
+
+library(moments)
+library(ggplot2)
 #check out skewness of all numeric variables
 sapply(dfNum, hist)
 sapply(dfNum,skewness)
@@ -106,6 +103,7 @@ sapply(dfNum,skewness)
 ```
 
 ```{r}
+library(psych)
 #function to success of various transformations
 tansformAndGetSkew<-function(dist1){
   log=skew(log(dist1))
@@ -124,17 +122,18 @@ sapply(dfNum, tansformAndGetSkew)
 
 #Use results to infer which might be the best type of transformation
 #Changing pubRec & delinqyr to categorical variables due to too many instances of '0' in both. 
-boxplot(df_New$pubRec)
+
 #use unique() to determine breaks
 unique(df_New$pubRec)
 
 #Make three levels, one containing zero, 1-3, and more than 3
-cutPubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
-levels(cutPubRec)
+df_New$pubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
+levels(df_New$pubRec)<-c("None","1-3","More than 3")
 
+unique(df_New$pubRec)
 #DO THIS AGAIN But with delinqyr
-cutPubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
-levels(cutPubRec)
+df_New$delinq2yr<-cut(df_New$delinq2yr,breaks=c(-.10,.1,3,12))
+levels(df_New$delinq2yr)<-c("None","1-3","More than 3")
 
 
 ```
@@ -144,20 +143,58 @@ levels(cutPubRec)
 
 #begin transformations
 df_New$income<-log(df_New$income)
+df_New$inq6mth<-(df_New$inq6mth)^(1/4)
+df_New$openAcc<-log(df_New$openAcc)
+df_New$totalBal<-(df_New$totalBal)^(1/3)
+df_New$totalRevLim<-(df_New$totalRevLim)^(1/3)
+df_New$accOpen24<-sqrt(df_New$accOpen24)
+df_New$bcOpen<-(df_New$bcOpen)^(1/3)
+df_New$totalRevBal<-df_New$totalRevBal^(1/3)
 
-z=sign(df_New$delinq2yr) * abs(df_New$delinq2yr)^(1/80) 
-hist(z)
-hist(df_New$delinq2yr)
-Income_sqrt = sqrt(df_New$income)
-skew(Income_sqrt)
-
+#make new data frame to test skew on numeric data to see if successful.
+dfNum1<-select_if(df_New, is.numeric)
+sapply(dfNum1,skew)
+hist(dfNum1$inq6mth)
+sapply(dfNum1,hist)
 ```
 
 
 
 
-```
 ```{r}
+#see visual differences if any of good loans vs bad
+boxplot(income~payment_status,data=df_New)
+boxplot(amount~payment_status,data=df_New)
+boxplot(debtIncRat~payment_status,data=df_New)
+boxplot(openAcc~payment_status,data=df_New)
+boxplot(totalAcc~payment_status,data=df_New)
+boxplot(totalBal~payment_status,data=df_New)
+boxplot(totalRevLim~payment_status,data=df_New)
+boxplot(accOpen24~payment_status,data=df_New)
+boxplot(bcOpen~payment_status,data=df_New)
+boxplot(totalRevBal~payment_status,data=df_New)
+
+#compare frequency tables
+getFreqTable<-function(var1){
+  mytable <- table(var1,df_New$payment_status) 
+  return(ftable(mytable))
+}
+getFreqTable(df_New$term)
+getFreqTable(df_New$grade)
+getFreqTable(df_New$length)
+getFreqTable(df_New$home)
+getFreqTable(df_New$verified)
+getFreqTable(df_New$reason)
+getFreqTable(df_New$delinq2yr)
+
+
+
+
+```
+
+```{r}
+
+
 #Eventually...
 mylogit <- glm(as.factor(payment_status) ~ ., data = df_New, family = "binomial")
 
