@@ -11,7 +11,6 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 #Load Data
 library(readr)
 loans50k <- read_csv("loans50k.csv")
-View(loans50k)
 ```
 ```{r}
 library(tidyr)
@@ -24,6 +23,8 @@ df <-
     status == "Charged Off" ~ "Bad",
     TRUE ~ ""
   ))
+
+#check total
 
 #change the empty string cells to NAs
 df[df==""]<-NA
@@ -62,29 +63,98 @@ unique(df1$verified)
 ```{r}
 #make subset of numerical data check covariance matrix on numeric factors. 
 dfNum<-select_if(df1, is.numeric)
-cor(dfNum)
+m<-cor(dfNum)
+#easy way to find strong correlations; arbitrary value set at .8
+strongCorrelations = m > .8
+dfNum$totalIlLim
+
+
 #Found few redundant variables...will eliminate: 
 
 #Final check for number of levels in each categorical variable
 dfChar<-select_if(df1,is.character) 
 sapply((sapply(dfChar,unique)),length)
 
-
+cor(df$avgBal,df$totalLim)
 #Eliminating: totalPaid, employment (already done), payment,revolRatio, avgBal, totalLim,state,status,loanID
-df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID)))
+df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID,totalIlLim,totalBcLim)))
 
+#Test for instances of each level
+x=sapply(dfCont,count)
+
+#going to combine a few levels in "reason" due to the lack of instances
+df_New$reason<-revalue(df_New$reason,c("wedding"="other","renewable_energy"="other","house"="major_purchase"))
+#Test for instances of each level again
+x=sapply(df_New,count)
+
+#lowest #of instances is now above 200
 ```
 
 
 ```{r}
-
+#make new df of only numeric variables.
+dfNum<-select_if(df_New, is.numeric)
+dfCont<-select_if(df_New, is.character)
+library("moments")
 library("ggplot2")
-sapply(df_New, hist)
+#check out skewness of all numeric variables
+sapply(dfNum, hist)
+sapply(dfNum,skewness)
+#Distributions that have a skewness greater than 1 are generally considered "highly skewed"
+#will transform: income, delinq2yr,inq6mth,openAcc,pubRec,totalBal,totalRevLim,accOpen24,bcOpen,totalRevBal
+
+```
+
+```{r}
+#function to success of various transformations
+tansformAndGetSkew<-function(dist1){
+  log=skew(log(dist1))
+  lognat=skew(log(dist1,base=exp(1)))
+  sqrt=skew(sqrt(dist1))
+  curt=skew(sign(dist1) * abs(dist1)^(1/3) )
+  fthrt=skew(sign(dist1)^(1/4))
+  reciprical=skew(1/dist1)
+  
+  list1<- c(log,lognat,sqrt,curt,fthrt,reciprical)
+  
+  return(list1)
+}
+#apply function to all numerical variables
+sapply(dfNum, tansformAndGetSkew)
+
+#Use results to infer which might be the best type of transformation
+#Changing pubRec & delinqyr to categorical variables due to too many instances of '0' in both. 
+boxplot(df_New$pubRec)
+#use unique() to determine breaks
+unique(df_New$pubRec)
+
+#Make three levels, one containing zero, 1-3, and more than 3
+cutPubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
+levels(cutPubRec)
+
+#DO THIS AGAIN But with delinqyr
+cutPubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
+levels(cutPubRec)
+
+
 ```
 
 ```{r}
 
+
+#begin transformations
+df_New$income<-log(df_New$income)
+
+z=sign(df_New$delinq2yr) * abs(df_New$delinq2yr)^(1/80) 
+hist(z)
+hist(df_New$delinq2yr)
+Income_sqrt = sqrt(df_New$income)
+skew(Income_sqrt)
+
 ```
+
+
+
 
 ```
 ```{r}
