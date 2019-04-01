@@ -209,12 +209,11 @@ getFreqTable(df_New$verified)
 getFreqTable(df_New$reason)
 getFreqTable(df_New$delinq2yr)
 ```
-Splitting the dataset into test and training
+###Splitting the data into test and trainig data. 
 ```{r}
 ## 80% of the sample size
 smp_size <- floor(0.8 * nrow(df_New))
-
-## set the seed to make your partition reproducible
+## set the seed to make partition reproducible
 set.seed(123)
 train_ind <- sample(seq_len(nrow(df_New)), size = smp_size)
 
