@@ -1,101 +1,236 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Final Project DS 705"
+author: "Joe Athas"
+output: word_document
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
-
-```{r}
+```{r include=FALSE}
+options(max.print = 20)
 #Load Data
 library(readr)
 loans50k <- read_csv("loans50k.csv")
-View(loans50k)
-```
-```{r}
 library(tidyr)
+
 library(dplyr)
+library(plyr)
+library(moments)
+library(ggplot2)
+library(psych)
+
+```
+#Introduction
+It is very important banks only give loans to those that are able to pay them back in full. Loans without a lien can be a potential risk for a bank. Loans that have a lien or collateral are also very costly in the event of a default. The goal for this data exploration and analysis is to determine a model with appropriate predictor variables using data often gathered by financial institutions and to use that model to predict the likelihood of a loan applicant defaulting or paying off the loan. To do this some manipulation of the data may be in order. I will be using R to do preliminary exploration, cleaning, and transformation of the provided sample data, “loans50k.csv”. 
+```{r}
+citation()
+```
+#Section 3 Preparing and Cleaning the data
+Upon receiving the data, the first thing I did was make the appropriate response variable: A binary variable (as is needed for logistic regression) produced from the original variable “status”. Fully paid loans were reclassified as good, those in “default” or “charged off” were reclassified as bad. All other levels of status (loans in progress or not complete) were removed from the dataset. 
+
+```{r}
 #Make new variable: Set "Good" and "Bad" Loans, all else "blank" to be removed later
 df <-
   loans50k %>%
   mutate(payment_status = case_when(
     status == "Fully Paid" ~ "Good", 
     status == "Charged Off" ~ "Bad",
+     status == "Default" ~ "Bad",
     TRUE ~ ""
   ))
-
-#change the empty string cells to NAs
-df[df==""]<-NA
-
-#Test where all NAs are to 
-which(is.na(df), arr.ind=TRUE)
-#Found a bunch in "employment". Going to eliminate on account of too many levels/NA values.  
-df$employment<- NULL
-
-```
-
-```{r}
 #Probably best to get rid of the null values we aren't interested in payment_status:
 df<-df %>% drop_na(payment_status)
 
-#Test where the NAs are again:
-which(is.na(df), arr.ind=TRUE)
+#change the empty string cells to NAs
+df[df==""]<-NA
+```
+Turning any fields into NA values makes it easier to eliminate later
+I also removed “employed” immediately as there were too many levels and empty values. Last thing I did before really digging into the data was removing all the rows containing NA values. All the remaining NAs were in I noticed it only reduced n by approximately 1% which didn’t compromise the integrity of the original set all too much. A few other variables were removed for redundancy. 
+```{r}
+#Test where all NAs are to 
+#which(is.na(df), arr.ind=TRUE)
+#Found a bunch in "employment". Going to eliminate on account of too many levels/NA values.  
+df$employment<- NULL
 
-#Row 34806 is missing all values, eliminate and test again:
-df <- df[-c(34806),] 
+#Test where the NAs are again:
 which(is.na(df), arr.ind=TRUE)
 #last NA values are in bcOpen and bcRatio, of which there are roughtly 400 incomplete entries, 
 #or roughly 1% of the dataset. Eliminating these wont be a huge issue. 
 
 #Finally omit all the rows containing NA values. (This will not eliminate the NA values in "length" as they are strings)
 df1<-na.omit(df)
-
-
-#consolidate "verified" variable into two levels instead of three
-library(plyr)
-df1$verified<-revalue(df1$verified, c("Source Verified"="Verified"))
-unique(df1$verified)
-
 ```
-
+Here a covariance matrix was constructed of the numerical predictors to aid in this process of determining redundancy. I chose an arbitrary value of .8 of Pearson’s r to classify variables as strongly correlated. The strong correlations were as follows: Total limit of credit cards was heavily correlated with Total unused credit on cards. Unused credit (bcOpen) seemed like a more logical choice than totalBcLim (total limit of cc) and it eliminated some redundancy. ‘Payment’ was heavily associated with ‘amount’ as monthly payment is a function of the total amount of the loan. I deleted this variable to eliminate redundancy. Proportion of revolving credit use(revolRatio) was eliminated due to redundancy with ratio of total credit card limits (bcOpen). Average balance and total credit limit were both strongly correlated with total Balance. I figured there is a lot of redundancy between these three variables, keeping just totalBal would suffice.
 ```{r}
 #make subset of numerical data check covariance matrix on numeric factors. 
 dfNum<-select_if(df1, is.numeric)
-cor(dfNum)
-#Found few redundant variables...will eliminate: 
-
+m<-cor(dfNum)
+#easy way to find strong correlations; arbitrary value set at .8
+strongCorrelations = m > .8
+#Found few redundant variables...will eliminate
+```
+A few predictor variables were initially removed due to lack of relevance. These included “totalPaid”, “state”, and “loanID”. “State” and “loanID” have nothing really to do with the actual loan, whereas “totalpaid” cannot be a predictor variable of a completed loan.  A few more were eliminated based on redundancy as mentioned above. 
+```{r}
 #Final check for number of levels in each categorical variable
 dfChar<-select_if(df1,is.character) 
 sapply((sapply(dfChar,unique)),length)
 
-
+cor(df$avgBal,df$totalLim)
 #Eliminating: totalPaid, employment (already done), payment,revolRatio, avgBal, totalLim,state,status,loanID
-df_New = as.data.frame(subset(df1, select = -c(totalPaid, payment,revolRatio, avgBal, totalLim,state,status,loanID)))
+df_New = as.data.frame(subset(df1, select = -c(payment,revolRatio, avgBal, totalLim,state,status,loanID,totalIlLim,totalBcLim)))
+
+
+```
+A few other variables I touched up were “verified” and “reason”. “Verified” had three levels, two of which were redundant; “source verified” and “verified”. I changed all “source verified” to just “verified” to eliminate the mistake. “Reason” contained a few levels with very few instances which is considered less powerful for logistic regression. I modified “wedding” and “renewable_energy” to “other” and “house” to “major_purchase” to consolidate a few levels. After going about data transformation in a later step, a few more concerning variables were mutated. ‘pubRec’ and ‘delinq2yr’ (number of derogatory public records and number of 30+ day late payments in last two years respectively) both contained many instances of 0 due to their nature. Since many loans have ‘0’ represented in these respective variables, choosing to set it as categorical made more sense. I chose three levels for both variables (the same since they were similar scales) “None”, “1-3” and “More than 3”. Instructions
+```{r}
+#consolidate "verified" variable into two levels instead of three
+df1$verified<-revalue(df1$verified, c("Source Verified"="Verified"))
+unique(df1$verified)
+
+#going to combine a few levels in "reason" due to the lack of instances
+df_New$reason<-revalue(df_New$reason,c("wedding"="other","renewable_energy"="other","house"="major_purchase"))
+
+#make df of only continuous variables
+dfCont<-select_if(df_New, is.character)
+#Test for instances of each level
+x=sapply(dfCont,count)
+x
+#lowest #of instances is now above 200
+```
+###After removing redundencies and a few predictor variables, initial cleaning of dataset brings n = 34271.
+
+#Section 4 - “Exploring and Transforming the data” 
+Certain data transformations were necessary in order to meet the assumption of normality for logistic regression. I first analyzed the skewness of each distribution. Considering a skewness greater than the absolute value of 1 is considered “highly skewed”, I created a r function to attempt various transformations, specifically a log, natural log, square root, cube root, 4th root, and reciprocal, then return the skewness of the transformed distribution. I applied this function to every variable with an initial skewness greater than the absolute value of 1 and determined which transformation technique was the most successful at reducing skewness. Obviously this is a blanket technique, and eaach variable still needs to be looked at individually. 
+After determining which transformation to use for each variable, I performed the transformations as follows
+income: log transformation 
+openAcc: log transformation 
+totalBal: cubed root transformation 
+totalRevLim: cubed root transformation 
+accOpen24: square root transformation 
+bcOpen: cube root transformation 
+totalRevBal: cube root transformation
+
+##Section 4:
+Be careful with log transformation.  log(0) produces NA.  So log(openAcc) might be problematic.  Use log(openAcc+1) is openAcc has any 0 values.  Same for other variables that take on 0 values.##
+```{r}
+#make new df of only numeric variables.
+dfNum<-select_if(df_New, is.numeric)
+
+#check out skewness of all numeric variables
+par(mfrow=c(3,2))
+sapply(dfNum, hist)
+sapply(dfNum,skewness)
+#Distributions that have a skewness greater than 1 are generally considered "highly skewed"
+#will transform: income, delinq2yr,inq6mth,openAcc,pubRec,totalBal,totalRevLim,accOpen24,bcOpen,totalRevBal
 
 ```
 
+```{r}
+#function to success of various transformations
+tansformAndGetSkew<-function(dist1){
+  log=skew(log(dist1))
+  lognat=skew(log(dist1,base=exp(1)))
+  sqrt=skew(sqrt(dist1))
+  curt=skew(sign(dist1) * abs(dist1)^(1/3) )
+  fthrt=skew(sign(dist1)^(1/4))
+  reciprical=skew(1/dist1)
+  
+  list1<- c(log,lognat,sqrt,curt,fthrt,reciprical)
+  
+  return(list1)
+}
+#apply function to all numerical variables
+sapply(dfNum, tansformAndGetSkew)
+
+#Use results to infer which might be the best type of transformation
+#Changing pubRec & delinqyr to categorical variables due to too many instances of '0' in both. 
+
+#use unique() to determine breaks
+unique(df_New$pubRec)
+
+#Make three levels, one containing zero, 1-3, and more than 3
+df_New$pubRec<-cut(df_New$pubRec,breaks=c(-.10,.1,3,14))
+levels(df_New$pubRec)<-c("None","1-3","More than 3")
+
+unique(df_New$pubRec)
+#DO THIS AGAIN But with delinqyr
+df_New$delinq2yr<-cut(df_New$delinq2yr,breaks=c(-.10,.1,3,12))
+levels(df_New$delinq2yr)<-c("None","1-3","More than 3")
+```
 
 ```{r}
 
-library("ggplot2")
-sapply(df_New, hist)
+#begin transformations
+df_New$income<-log(df_New$income)
+df_New$inq6mth<-(df_New$inq6mth)^(1/4)
+df_New$openAcc<-log(df_New$openAcc+1) #add 1 to oppenAcc to avoid taking log(0)
+df_New$totalBal<-(df_New$totalBal)^(1/3)
+df_New$totalRevLim<-(df_New$totalRevLim)^(1/3)
+df_New$accOpen24<-sqrt(df_New$accOpen24)
+df_New$bcOpen<-(df_New$bcOpen)^(1/3)
+df_New$totalRevBal<-df_New$totalRevBal^(1/3)
+
+#Check if any NA values induced
+which(is.na(df_New), arr.ind=TRUE)
+df_New<-na.omit(df_New)
+
+
+#make new data frame to test skew on numeric data to see if successful.
+dfNum1<-select_if(df_New, is.numeric)
+sapply(dfNum1,skew)
+par(mfrow=c(2,2))
+sapply(dfNum1,hist)
+```
+#Exploration: 
+Side-by-side boxplots for continuous data and frequency tables for categorical data were created to compare each factor to the dependent variable. Few variables popped out immediately as good indicators, however, few were found. The variable “term” has a much higher ratio of bad loans to good in the loans that are 60 months vs 36 months. Loans rated ‘D’ or lower also have a much higher ratio of being “bad” than their counterparts.
+```{r}
+par(mfrow=c(2,3))
+
+#see visual differences if any of good loans vs bad
+boxplot(income~payment_status,data=df_New)
+boxplot(amount~payment_status,data=df_New)
+boxplot(debtIncRat~payment_status,data=df_New)
+boxplot(openAcc~payment_status,data=df_New)
+boxplot(totalAcc~payment_status,data=df_New)
+boxplot(totalBal~payment_status,data=df_New)
+boxplot(totalRevLim~payment_status,data=df_New)
+boxplot(accOpen24~payment_status,data=df_New)
+boxplot(bcOpen~payment_status,data=df_New)
+boxplot(totalRevBal~payment_status,data=df_New)
+
+#compare frequency tables
+getFreqTable<-function(var1){
+  mytable <- table(var1,df_New$payment_status) 
+  return(ftable(mytable))
+}
+getFreqTable(df_New$term)
+getFreqTable(df_New$grade)
+getFreqTable(df_New$length)
+getFreqTable(df_New$home)
+getFreqTable(df_New$verified)
+getFreqTable(df_New$reason)
+getFreqTable(df_New$delinq2yr)
+```
+Splitting the dataset into test and training
+```{r}
+## 80% of the sample size
+smp_size <- floor(0.8 * nrow(df_New))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(df_New)), size = smp_size)
+
+train <- df_New[train_ind, ]
+test <- df_New[-train_ind, ]
+
+#eliminated totalPaid as variable
+train$totalPaid<-NULL
+
 ```
 
 ```{r}
 
-```
-
-```
-```{r}
-#Eventually...
-mylogit <- glm(as.factor(payment_status) ~ ., data = df_New, family = "binomial")
-
-
-```
-
-```{r}
-
+full_model2<-glm(RICH~.,data=farmpond,family="binomial")
+null_model2 <- glm(RICH~1,data=farmpond,family="binomial")
+step(null_model2,scope=list(lower=null_model2,upper=full_model2),direction="forward")
 ```
 
 
