@@ -16,7 +16,7 @@ library(plyr)
 library(moments)
 library(ggplot2)
 library(psych)
-
+library(leaps)
 ```
 #Introduction
 It is very important banks only give loans to those that are able to pay them back in full. Loans without a lien can be a potential risk for a bank. Loans that have a lien or collateral are also very costly in the event of a default. The goal for this data exploration and analysis is to determine a model with appropriate predictor variables using data often gathered by financial institutions and to use that model to predict the likelihood of a loan applicant defaulting or paying off the loan. To do this some manipulation of the data may be in order. I will be using R to do preliminary exploration, cleaning, and transformation of the provided sample data, “loans50k.csv”. 
@@ -82,7 +82,7 @@ df_New = as.data.frame(subset(df1, select = -c(payment,revolRatio, avgBal, total
 A few other variables I touched up were “verified” and “reason”. “Verified” had three levels, two of which were redundant; “source verified” and “verified”. I changed all “source verified” to just “verified” to eliminate the mistake. “Reason” contained a few levels with very few instances which is considered less powerful for logistic regression. I modified “wedding” and “renewable_energy” to “other” and “house” to “major_purchase” to consolidate a few levels. After going about data transformation in a later step, a few more concerning variables were mutated. ‘pubRec’ and ‘delinq2yr’ (number of derogatory public records and number of 30+ day late payments in last two years respectively) both contained many instances of 0 due to their nature. Since many loans have ‘0’ represented in these respective variables, choosing to set it as categorical made more sense. I chose three levels for both variables (the same since they were similar scales) “None”, “1-3” and “More than 3”. Instructions
 ```{r}
 #consolidate "verified" variable into two levels instead of three
-df1$verified<-revalue(df1$verified, c("Source Verified"="Verified"))
+df_New$verified<-revalue(df_New$verified, c("Source Verified"="Verified"))
 unique(df1$verified)
 
 #going to combine a few levels in "reason" due to the lack of instances
@@ -223,13 +223,55 @@ test <- df_New[-train_ind, ]
 #eliminated totalPaid as variable
 train$totalPaid<-NULL
 
+#Coerce "payment_status" response variable into factor to perform logistic regression. 
+train$payment_status <- as.factor(train$payment_status)
 ```
-
+#Begin Logistic Regression Exploration
 ```{r}
 
-full_model2<-glm(RICH~.,data=farmpond,family="binomial")
-null_model2 <- glm(RICH~1,data=farmpond,family="binomial")
-step(null_model2,scope=list(lower=null_model2,upper=full_model2),direction="forward")
+full_model2<-glm(payment_status~.,data=train,family="binomial")
+null_model2 <- glm(payment_status~1,data=train,family="binomial")
+#step(null_model2,scope=list(lower=null_model2,upper=full_model2),direction="forward")
+```
+```{r}
+summary(full_model2)
+options(max.print = 1000)
+```
+#Use regsubsets to find best model based on $R^2_{adj}$
+```{r}
+all_models <- regsubsets(payment_status~.,nvmax=12,data=train)
+summary(all_models)
+summary(all_models)$adjr2
+```
+After examining a few of the models created by the regsubsets function in r, a few more predictors were eliminated. The ones deemed worth of keeping for now are represented by the formula below.  
+```{r}
+modelA<-glm(formula = payment_status ~ grade + term + debtIncRat + totalBal + 
+    accOpen24 + bcOpen  + amount  + home + totalAcc +  rate,data = train,family = "binomial")
+summary(modelA)
+```
+After the model was fit, the testing data was input to the model to predict probabilites of loan status. Below is a contingency table and the given proportions of correctly predicted loans both good and bad. 
+```{r}
+predprob <- fitted(modelA) # get predicted probabilities
+
+threshhold <- 0.3
+# Set Y=1 when predicted probability exceeds this
+predLoan <- cut(predprob, breaks=c(-Inf, threshhold, Inf), 
+                labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
+
+cTab <- table(train$payment_status, predLoan) 
+addmargins(cTab)
+
+p <- sum(diag(cTab)) / sum(cTab)  # compute the proportion of correct classifications
+badLoanp<-cTab[1]/(cTab[1]+cTab[2])
+goodLoanp<-cTab[4]/(cTab[4]+cTab[3])
+
+print(paste('Proportion correctly predicted = ', p)) 
+print(paste('Proportion of correctly predicted Bad Loans =',badLoanp))
+print(paste('Proportion of correctly predicted Good Loans =',goodLoanp))
+```
+Although our "Good" loans have a pretty high success rate at 79.9%, the "bad" ones are a little less accurate coming in at a success rate of 58.5%.  Here is where a little intuition helps; a bank doesn't care about predicting good loans as much as it does bad ones. This model is more helpful than chance alone, but the risks are still pretty high due to the inability to properly predict more than 40% of the bad loans. In other words, aproximately 20% of the loans predicted as good will actually be bad, whereas 40% of the loans predicted as bad could have actually been good. At this point I wouldn't use this model to actually predict loans. 
+```{r}
+
 ```
 
 
