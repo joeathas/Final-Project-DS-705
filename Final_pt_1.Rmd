@@ -81,7 +81,7 @@ df_New = as.data.frame(subset(df1, select = -c(payment,revolRatio, avgBal, total
 
 ```
 A few other variables I touched up were “verified” and “reason”. “Verified” had three levels, two of which were redundant; “source verified” and “verified”. I changed all “source verified” to just “verified” to eliminate the mistake. “Reason” contained a few levels with very few instances which is considered less powerful for logistic regression. I modified “wedding” and “renewable_energy” to “other” and “house” to “major_purchase” to consolidate a few levels. After going about data transformation in a later step, a few more concerning variables were mutated. ‘pubRec’ and ‘delinq2yr’ (number of derogatory public records and number of 30+ day late payments in last two years respectively) both contained many instances of 0 due to their nature. Since many loans have ‘0’ represented in these respective variables, choosing to set it as categorical made more sense. I chose three levels for both variables (the same since they were similar scales) “None”, “1-3” and “More than 3”. Instructions
-```{r}
+```{r results='hide'}
 #consolidate "verified" variable into two levels instead of three
 df_New$verified<-revalue(df_New$verified, c("Source Verified"="Verified"))
 unique(df1$verified)
@@ -190,7 +190,7 @@ Plots and skew are looking more normal which passes the assumptions of logistic 
 #Exploration: 
 Side-by-side boxplots for continuous data and frequency tables for categorical data were created to compare each factor to the dependent variable. Few variables popped out immediately as good indicators, however, few were found. The variable “term” has a much higher ratio of bad loans to good in the loans that are 60 months vs 36 months. Loans rated ‘D’ or lower also have a much higher ratio of being “bad” than their counterparts.
 ```{r echo= FALSE}
-par(mfrow=c(2,3))
+par(mfrow=c(3,4))
 
 #see visual differences if any of good loans vs bad
 boxplot(income~payment_status,data=df_New)
@@ -203,7 +203,9 @@ boxplot(totalRevLim~payment_status,data=df_New)
 boxplot(accOpen24~payment_status,data=df_New)
 boxplot(bcOpen~payment_status,data=df_New)
 boxplot(totalRevBal~payment_status,data=df_New)
+```
 
+```{r include=FALSE}
 #compare frequency tables
 getFreqTable<-function(var1){
   mytable <- table(var1,df_New$payment_status) 
@@ -263,10 +265,10 @@ modelA<-glm(formula = payment_status ~ grade + term + debtIncRat + totalBal +
 summary(modelA)
 ```
 After the model was fit, the testing data was input to the model to predict probabilites of loan status. Below is a contingency table and the given proportions of correctly predicted loans both good and bad. 
-```{r}
+```{r echo=F}
 predprob <- fitted(modelA) # get predicted probabilities
 
-threshhold <- 0.5
+threshhold <- 0.3
 
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
@@ -340,14 +342,16 @@ goodLoanp6<-round(cTab6[4]/(cTab6[4]+cTab6[3]),3)
 ```
 After playing around with the threshold of the predict() function, I saved a few bar plots of the contingency talbes of various thresholds.  Below are a few of the graphs for comparison.
 
-```{r echo= FALSE}
-par(mfrow=c(3,2))
-barplot(cTab,main = paste("Predicted propabilities with Threshold =",threshhold),sub = paste("Good Loans Success Rate =",round(goodLoanp,3),"Bad Loans Success Rate =",badLoanp))
-barplot(cTab3,main = paste("Predicted propabilities with Threshold =",threshhold3),sub = paste("Good Loans Success Rate =",round(goodLoanp3,3),"Bad Loans Success Rate =",badLoanp3))
-barplot(cTab35,main = paste("Predicted propabilities with Threshold =",threshhold35),sub = paste("Good Loans Success Rate =",round(goodLoanp35,3),"Bad Loans Success Rate =",badLoanp35))
-barplot(cTab4,main = paste("Predicted propabilities with Threshold =",threshhold4),sub = paste("Good Loans Success Rate =",round(goodLoanp4,3),"Bad Loans Success Rate =",badLoanp4))
-barplot(cTab6,main = paste("Predicted propabilities with Threshold =",threshhold6),sub = paste("Good Loans Success Rate =",round(goodLoanp6,3),"Bad Loans Success Rate =",badLoanp6))
+```{r echo= FALSE, fig.height = 8}
+par(mfrow=c(3,1))
+barplot(cTab,main = paste("Predicted propabilities with Threshold =",threshhold),sub = paste("Bad Loans Success Rate =",round(badLoanp,3),"Good Loans Success Rate =",goodLoanp))
+barplot(cTab3,main = paste("Predicted propabilities with Threshold =",threshhold3),sub = paste("Bad Loans Success Rate =",round(badLoanp3,3),"Good Loans Success Rate =",goodLoanp3))
+barplot(cTab35,main = paste("Predicted propabilities with Threshold =",threshhold35),sub = paste("Bad Loans Success Rate =",round(badLoanp35,3),"Good Loans Success Rate =",goodLoanp35))
+barplot(cTab4,main = paste("Predicted propabilities with Threshold =",threshhold4),sub = paste("Bad Loans Success Rate =",round(badLoanp4,3),"Good Loans Success Rate =",goodLoanp4))
+barplot(cTab6,main = paste("Predicted propabilities with Threshold =",threshhold6),sub = paste("Bad Loans Success Rate =",round(badLoanp6,3),"Good Loans Success Rate =",goodLoanp6))
 ```
+It appears the lower the threshhold, the more loans are predicted as 'Good'.  Overall accuracy is pretty consistent from a threshhold of .3 to .6. However, as threshhold decreases, "Good loan"
+
 
 
 
