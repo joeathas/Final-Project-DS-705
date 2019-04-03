@@ -18,6 +18,7 @@ library(moments)
 library(ggplot2)
 library(psych)
 library(leaps)
+library(scales)
 ```
 #Introduction
 It is very important banks only give loans to those that are able to pay them back in full. Loans without a lien can be a potential risk for a bank. Loans that have a lien or collateral are also very costly in the event of a default. The goal for this data exploration and analysis is to determine a model with appropriate predictor variables using data often gathered by financial institutions and to use that model to predict the likelihood of a loan applicant defaulting or paying off the loan. To do this some manipulation of the data may be in order. I will be using R to do preliminary exploration, cleaning, and transformation of the provided sample data, “loans50k.csv”. 
@@ -41,9 +42,10 @@ df <-
 df<-df %>% drop_na(payment_status)
 
 #change the empty string cells to NAs
+#Turning any fields into NA values makes it easier to eliminate later
 df[df==""]<-NA
 ```
-Turning any fields into NA values makes it easier to eliminate later
+
 I also removed “employed” immediately as there were too many levels and empty values. Last thing I did before really digging into the data was removing all the rows containing NA values. All the remaining NAs were in I noticed it only reduced n by approximately 1% which didn’t compromise the integrity of the original set all too much. A few other variables were removed for redundancy. 
 ```{r results='hide'}
 #Test where all NAs are to 
@@ -266,14 +268,12 @@ summary(modelA)
 ```
 After the model was fit, the testing data was input to the model to predict probabilites of loan status. Below is a contingency table and the given proportions of correctly predicted loans both good and bad. 
 ```{r echo=F}
-predprob <- fitted(modelA) # get predicted probabilities
+predprob <- predict(modelA, test, type="response") # get predicted probabilities
 
-threshhold <- 0.3
-
+threshhold <- 0.68
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
-
-cTab <- table(train$payment_status, predLoan) 
+cTab <- table(test$payment_status, predLoan) 
 addmargins(cTab)
 
 p <- sum(diag(cTab)) / sum(cTab)  # compute the proportion of correct classifications
@@ -285,14 +285,14 @@ print(paste('Proportion of correctly predicted Bad Loans =',badLoanp))
 print(paste('Proportion of correctly predicted Good Loans =',goodLoanp))
 
 ```
-Although our "Good" loans have a pretty high success rate at 79.9%, the "bad" ones are a little less accurate coming in at a success rate of 58.5%.  Here is where a little intuition helps; a bank doesn't care about predicting good loans as much as it does bad ones. This model is more helpful than chance alone, but the risks are still pretty high due to the inability to properly predict more than 40% of the bad loans. In other words, aproximately 20% of the loans predicted as good will actually be bad, whereas 40% of the loans predicted as bad could have actually been good. At this point I wouldn't use this model to actually predict loans. 
+Although our "Good" loans have a pretty high success rate at 78.2%, the "bad" ones are a little less accurate coming in at a success rate of 54.8%.  Here is where a little intuition helps; a bank doesn't care about predicting good loans as much as it does bad ones. This model is more helpful than chance alone, but the risks are still pretty high due to the inability to properly predict more than 45% of the bad loans. In other words, aproximately 20% of the loans predicted as good will actually be bad, whereas 45% of the loans predicted as bad could have actually been good. At this point I wouldn't use this model to actually predict loans. 
 ```{r echo= FALSE}
 threshhold3 <- 0.3
 
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold3, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
 
-cTab3 <- table(train$payment_status, predLoan) 
+cTab3 <- table(test$payment_status, predLoan)
 
 p3 <- sum(diag(cTab3)) / sum(cTab3)  
 badLoanp3<-cTab3[1]/(cTab3[1]+cTab3[2])
@@ -305,7 +305,7 @@ threshhold4 <- 0.4
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold4, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
 
-cTab4 <- table(train$payment_status, predLoan) 
+cTab4 <- table(test$payment_status, predLoan) 
 
 p4 <- sum(diag(cTab4)) / sum(cTab4)  
 badLoanp4<-round(cTab4[1]/(cTab4[1]+cTab4[2]),3)
@@ -319,7 +319,7 @@ threshhold35 <- 0.35
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold35, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
 
-cTab35 <- table(train$payment_status, predLoan) 
+cTab35 <- table(test$payment_status, predLoan)
 
 p35 <- sum(diag(cTab35)) / sum(cTab35)  
 badLoanp35<-round(cTab35[1]/(cTab35[1]+cTab35[2]),3)
@@ -333,7 +333,7 @@ threshhold6 <- 0.6
 predLoan <- cut(predprob, breaks=c(-Inf, threshhold6, Inf), 
                 labels=c("Bad Loan", "Good Loan"))  # Y=1 is "Good" here
 
-cTab6 <- table(train$payment_status, predLoan) 
+cTab6 <- table(test$payment_status, predLoan)
 
 p6 <- sum(diag(cTab6)) / sum(cTab6)  
 badLoanp6<-round(cTab6[1]/(cTab6[1]+cTab6[2]),3)
@@ -350,10 +350,46 @@ barplot(cTab35,main = paste("Predicted propabilities with Threshold =",threshhol
 barplot(cTab4,main = paste("Predicted propabilities with Threshold =",threshhold4),sub = paste("Bad Loans Success Rate =",round(badLoanp4,3),"Good Loans Success Rate =",goodLoanp4))
 barplot(cTab6,main = paste("Predicted propabilities with Threshold =",threshhold6),sub = paste("Bad Loans Success Rate =",round(badLoanp6,3),"Good Loans Success Rate =",goodLoanp6))
 ```
-It appears the lower the threshhold, the more loans are predicted as 'Good'.  Overall accuracy is pretty consistent from a threshhold of .3 to .6. However, as threshhold decreases, "Good loan"
+
+It appears the lower the threshhold, the more loans are predicted as 'Good'.  Overall accuracy is pretty consistent from a threshhold of .3 to .6. Accuracy maximizes around .52.
+```{r}
+#Join predprobs with test data
+test1<-cbind(test, predprob)
+```
+Here is a function to produce profits given a threshold for predition probability. Using this function and modifying the threshold in the parameter allows comparison of profit return.  
+```{r}
+get_profits<-function(threshhold,test1){
+  new_data <- subset(test1, predprob > threshhold)
+  profits<-new_data$totalPaid-new_data$amount
+  x<-sum(profits)
+  return(x)
+}
+get_profits(.68,test1)
+get_profits(.6803 ,test1)
+get_profits(.6807,test1)
+
+```
+After some trial and error, the threshhold that returns the max profit is approximately .6803. The profits for the test data set with a threshhold of .6803 are around $3,497,823.
+
+```{r echo=F}
+perfectSubset<-subset(test,payment_status=="Good")
+profitPerfect<-perfectSubset$totalPaid-perfectSubset$amount
+print(paste("If we could predict every loan considered 'Good' with 100% accuracy, profits are", dollar(sum(profitPerfect))))
+profitAggregate<-test$totalPaid-test$amount
+print(paste("If  every loan was accepted, good or bad, profits are only", dollar(sum(profitAggregate))))
+sum(profitAggregate)/sum(profitPerfect)
+
+```
 
 
+The hypothetical perfect model would be by far the most profitable weighing in at \$12,365,881. Using no model, and simply accepting every loan equates to \$1,457,687 in profit which equates to 11.79% of the profits.
+
+Using the best logistic model above represented by modelA and a threshold of .6803, profits are around $3,497,823, or 28.29% the perfect predictor. Of course it is still impossible to perfectly predict whether or not a person will default on a loan. However, using the model we can accept more laons and more than double profits than simply accepting every loan. 
+
+Interestingly enough the threshhold used for categorizing Good vs Bad loans based on based on profit maximization(.68) is less accurate than the threshholds maximizing accuracy (.52). However, not by a significant margin (.781 and .742 respectively.) 
 
 
-
+#Results Summary
+Using logistic regression, we can more accurately predict whether or not a loan will fail than chance alone. In addition to this, we can maximize profits using a logistic model.  The following predictor variables were chosen as after redundancy was eliminated and those only deemed statistically significant: grade, term, debtIncRat, totalBal, accOpen24, bcOpen, amount, home, and totalAcc.
+The classification threshold chosen to maximize profits was .6803.  This model predicted loan classification with 74% accuracy. The model also is deemed more profitable than accepting every loan outright.  Room could potentially be made for improvement, the $R^2$ for this model only weighed in around .10. 90% of variance is unaccounted for using these variables alone, other missing variables might provide additional insight. 
 
